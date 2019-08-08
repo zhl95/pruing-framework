@@ -1,23 +1,21 @@
-# Filter Pruning via Geometric Median for Deep Convolutional Neural Networks Acceleration
+# A unified framework for various pruning methods. Fully object oriented, high extensibility.
 
-![i1](https://github.com/he-y/filter-pruning-geometric-median/blob/master/functions/explain.png)
-
-**[CVPR 2019 Oral](http://openaccess.thecvf.com/content_CVPR_2019/html/He_Filter_Pruning_via_Geometric_Median_for_Deep_Convolutional_Neural_Networks_CVPR_2019_paper.html)**. 
-
-Implementation with PyTorch. This implementation is based on [soft-filter-pruning](https://github.com/he-y/soft-filter-pruning).
 
 ## Table of Contents
 
 - [Requirements](#requirements)
-- [Models and log files](#models-and-log-files)
-- [Training ResNet on ImageNet](#training-imagenet)
-  - [Usage of Pruning Training](#usage-of-pruning-training)
-  - [Usage of Normal Training](#usage-of-normal-training)
-  - [Inference the pruned model with zeros](#inference-the-pruned-model-with-zeros)
-  - [Inference the pruned model without zeros](#inference-the-pruned-model-without-zeros)
-  - [Scripts to reproduce the results in our paper](#scripts-to-reproduce-the-results-in-our-paper)
-- [Training ResNet on Cifar-10](#training-resnet-on-cifar-10)
-- [Training VGGNet on Cifar-10](#training-vggnet-on-cifar-10)
+- [Quick start](#Quick start)
+- [Architecture](#Architecture)
+  - [Trainer](#Trainer)
+  - [Methodology](#Methodology)
+  - [Layer variants](#Layer variants)
+  - [Network](#Network)
+  - [Config and Args](#Config and Args)
+- [Added pruning methods](#Added pruning methods)
+  - [Norm based non-structural method](#Norm based non-structural method)
+  - [Norm-based filter pruning](#Norm-based filter pruning)
+  - [Geomeric median-based filter pruning](#Geomeric median-based filter pruning)
+- [Create a new pruning methods](#Create a new pruning methods)
 - [Notes](#notes)
   - [Torchvision Version](#torchvision-version)
   - [Why use 100 epochs for training](#why-use-100-epochs-for-training)
@@ -26,81 +24,48 @@ Implementation with PyTorch. This implementation is based on [soft-filter-prunin
 - [Citation](#citation)
 
 
+
+
 ## Requirements
 - Python 3.6
-- PyTorch 0.3.1
-- TorchVision 0.3.0
+- PyTorch 1.0.1 tested, 0.4.0 and above should also work.
+- TorchVision 0.2.2
 
-## Models and log files
-The trained models with log files can be found in [Google Drive](https://drive.google.com/drive/folders/1w_Max8L5ICJZSrlha8UybHfICik-iX95?usp=sharing).
-
-The pruned model without zeros (Release later).
-
-## Training ResNet on ImageNet
-
-#### Usage of Pruning Training
-We train each model from scratch by default. If you wish to train the model with pre-trained models, please use the options `--use_pretrain --lr 0.01`. 
-
-Run Pruning Training ResNet (depth 152,101,50,34,18) on Imagenet:
-
-```bash
-python pruning_train.py -a resnet152 --save_path ./snapshots/resnet152-rate-0.7 --rate_norm 1 --rate_dist 0.4 --layer_begin 0 --layer_end 462 --layer_inter 3  /path/to/Imagenet2012
-
-python pruning_train.py -a resnet101 --save_path ./snapshots/resnet101-rate-0.7 --rate_norm 1 --rate_dist 0.4 --layer_begin 0 --layer_end 309 --layer_inter 3  /path/to/Imagenet2012
-
-python pruning_train.py -a resnet50  --save_path ./snapshots/resnet50-rate-0.7 --rate_norm 1 --rate_dist 0.4 --layer_begin 0 --layer_end 156 --layer_inter 3  /path/to/Imagenet2012
-
-python pruning_train.py -a resnet34  --save_path ./snapshots/resnet34-rate-0.7 --rate_norm 1 --rate_dist 0.4 --layer_begin 0 --layer_end 105 --layer_inter 3  /path/to/Imagenet2012
-
-python pruning_train.py -a resnet18  --save_path ./snapshots/resnet18-rate-0.7 --rate_norm 1 --rate_dist 0.4 --layer_begin 0 --layer_end 57 --layer_inter 3  /path/to/Imagenet2012
-```
-Explanation:
- 
-Note1: `rate_norm = 0.9` means pruning 10% filters by norm-based criterion, `rate_dist = 0.2` means pruning 20% filters by distance-based criterion.
-
-Note2: the `layer_begin` and `layer_end` is the index of the first and last conv layer, `layer_inter` choose the conv layer instead of BN layer. 
-
-#### Usage of Normal Training
-Run resnet(100 epochs): 
-```bash
-python original_train.py -a resnet50 --save_dir ./snapshots/resnet50-baseline  /path/to/Imagenet2012 --workers 36
-```
-
-#### Inference the pruned model with zeros
-```bash
-sh function/inference_pruned.sh
-```
-
-#### Scripts to reproduce the results in our paper
-To train the ImageNet model with / without pruning, see the directory `scripts`.
-Full script is [here](https://github.com/he-y/filter_similarity/blob/master/scripts/pruning_imagenet_resnet.sh).
+## Quick start
+ -source source.sh to activate the env. update env name to your existing or create it.
+ -python run1.py 
 
 
-## Training ResNet on Cifar-10
-```bash
-sh scripts/pruning_cifar10.sh
-```
-Please be care of the hyper-parameter [`layer_end`](https://github.com/he-y/filter_similarity/blob/master/scripts/pruning_cifar10.sh#L4-L9) for different layer of ResNet.
+## Architecture
 
-Reproduce ablation study of Cifar-10:
-```bash
-sh scripts/ablation_pruning_cifar10.sh
-```
+#### Trainer
+training related class and methods are defined in train3.py, inlcuding train(), validate(), try_resume(). 
 
 
-## Training VGGNet on Cifar-10
-Refer to the directory `VGG_cifar`. 
-#### Reproduce previous paper [Pruning Filters for Efficient ConvNets](https://arxiv.org/abs/1608.08710)
-```bash
-sh VGG_cifar/scripts/PFEC_train_prune.sh
-```
-Four function included in the script, including [training baseline](https://github.com/he-y/filter_similarity/tree/master/VGG_cifar/scripts#L3-L12), [pruning from pretrain](https://github.com/he-y/filter_similarity/tree/master/VGG_cifar/scripts#L14-L43), [pruning from scratch](https://github.com/he-y/filter_similarity/tree/master/VGG_cifar/scripts#L45-L54), [finetune the pruend](https://github.com/he-y/filter_similarity/tree/master/VGG_cifar/scripts#L57-L65)
+#### Methodology
+Pruning methods are defined in functions/, for example, mask.py is the method for norm and geo-median filter pruning.
 
-#### Our method
-```bash
-sh VGG_cifar/scripts/pruning_vgg_my_method.sh
-```
-Including [pruning the pretrained](https://github.com/he-y/filter_similarity/blob/master/VGG_cifar/scripts/pruning_vgg_my_method.sh#L52-L61), [pruning the scratch](https://github.com/he-y/filter_similarity/blob/master/VGG_cifar/scripts/pruning_vgg_my_method.sh#L62-L66).
+#### Layer variants
+Here new layers is derived from basic Pytorch layers such as Conv2D and Linear. Override the original forward and backward function
+as needed. In this way, there is no need to explicitly load and rewrite data using buffer at the top main().
+
+#### Network
+Networks are defined in models/, import desired layer variants before constructing the network.
+
+## Config and Args
+Configurations are fined in config_.py with easydict, which can be updated by arguments. Args parser is in top main file: run1.py.
+
+
+## Added pruning methods
+Here I added several popular pruning methods.
+
+#### Norm based non-structural method
+
+#### Norm-based filter pruning
+
+#### Geomeric median-based filter pruning
+
+## Create a new pruning methods
 
 ## Notes
 
@@ -121,6 +86,8 @@ Refer to the [file](https://github.com/he-y/soft-filter-pruning/blob/master/util
 
 
 ## Citation
+For Filter Pruning via Geometric Median:
+![i1](https://github.com/he-y/filter-pruning-geometric-median/blob/master/functions/explain.png)
 ```
 @inproceedings{he2019filter,
   title     = {Filter Pruning via Geometric Median for Deep Convolutional Neural Networks Acceleration},
